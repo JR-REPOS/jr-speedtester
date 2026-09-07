@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { SpeedTestPhase } from "../types";
+import { motion, AnimatePresence } from "motion/react";
 
 interface SpeedGaugeProps {
   phase: SpeedTestPhase;
@@ -18,8 +19,37 @@ export const SpeedGauge: React.FC<SpeedGaugeProps> = ({
   jitterMs,
   darkMode,
 }) => {
+  // Smooth animated digital readout state
+  const [animatedDisplaySpeed, setAnimatedDisplaySpeed] = useState<number>(0);
+  const animFrameRef = useRef<number | null>(null);
+
+  // Smoothly interpolate the digital display speed to the latest currentSpeed
+  useEffect(() => {
+    let current = animatedDisplaySpeed;
+    const target = Math.max(0, currentSpeed);
+
+    const step = () => {
+      const diff = target - current;
+      if (Math.abs(diff) < 0.1) {
+        setAnimatedDisplaySpeed(target);
+        return;
+      }
+      // Fluid spring-like ease factor
+      current += diff * 0.22;
+      setAnimatedDisplaySpeed(current);
+      animFrameRef.current = requestAnimationFrame(step);
+    };
+
+    animFrameRef.current = requestAnimationFrame(step);
+
+    return () => {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+      }
+    };
+  }, [currentSpeed]);
+
   // Speed gauge uses a logarithmic/adaptive mapping so 0 to 1000 Mbps looks natural
-  // Scale thresholds: 0, 10, 50, 100, 250, 500, 1000
   const speedToAngle = (speed: number): number => {
     const minAngle = -135;
     const maxAngle = 135;
@@ -51,12 +81,17 @@ export const SpeedGauge: React.FC<SpeedGaugeProps> = ({
       ? "#8A2BE2"
       : phase === "ping"
       ? "#00BCF2"
-      : "#107C41";
+      : phase === "complete"
+      ? "#107C41"
+      : "#64748b";
 
-  // Arc calculation (Radius 120, center 150, 150)
+  // Arc calculation (Radius 115, center 150, 150)
   const radius = 115;
   const circumference = 2 * Math.PI * radius * (270 / 360);
-  const strokeDashoffset = circumference - (progress / 100) * circumference;
+  const strokeDashoffset = Math.max(
+    0,
+    circumference - (Math.min(100, Math.max(0, progress)) / 100) * circumference
+  );
 
   const ticks = [
     { value: "0", speed: 0 },
@@ -68,6 +103,17 @@ export const SpeedGauge: React.FC<SpeedGaugeProps> = ({
     { value: "1G", speed: 1000 },
   ];
 
+  const formattedSpeed =
+    phase === "ping"
+      ? pingMs !== undefined
+        ? pingMs.toFixed(0)
+        : "--"
+      : animatedDisplaySpeed > 0
+      ? animatedDisplaySpeed >= 100
+        ? animatedDisplaySpeed.toFixed(0)
+        : animatedDisplaySpeed.toFixed(1)
+      : "0.0";
+
   return (
     <div
       id="speed-gauge-container"
@@ -78,27 +124,43 @@ export const SpeedGauge: React.FC<SpeedGaugeProps> = ({
           className="w-full h-full overflow-visible"
           viewBox="0 0 300 280"
         >
-          {/* Background Arc */}
+          <defs>
+            <filter id="gauge-glow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow
+                dx="0"
+                dy="2"
+                stdDeviation="3"
+                floodColor={strokeColor}
+                floodOpacity="0.25"
+              />
+            </filter>
+          </defs>
+
+          {/* Background Track Arc */}
           <path
             d="M 68.68 231.32 A 115 115 0 1 1 231.32 231.32"
             fill="none"
-            stroke={darkMode ? "#333333" : "#e0e0e0"}
+            stroke={darkMode ? "#303030" : "#e4e4e4"}
             strokeWidth="14"
             strokeLinecap="round"
           />
 
-          {/* Active Progress Arc */}
-          <path
+          {/* Active Progress Arc with Framer-Motion transition */}
+          <motion.path
             d="M 68.68 231.32 A 115 115 0 1 1 231.32 231.32"
             fill="none"
-            stroke={strokeColor}
             strokeWidth="14"
             strokeLinecap="round"
             strokeDasharray={`${circumference} ${circumference}`}
-            style={{
+            animate={{
               strokeDashoffset: isNaN(strokeDashoffset) ? circumference : strokeDashoffset,
-              transition: "stroke-dashoffset 0.15s ease-out, stroke 0.3s ease",
+              stroke: strokeColor,
             }}
+            transition={{
+              strokeDashoffset: { duration: 0.25, ease: "easeOut" },
+              stroke: { duration: 0.35, ease: "easeInOut" },
+            }}
+            filter="url(#gauge-glow)"
           />
 
           {/* Tick marks and labels */}
@@ -123,7 +185,7 @@ export const SpeedGauge: React.FC<SpeedGaugeProps> = ({
                   y1={y1}
                   x2={x2}
                   y2={y2}
-                  stroke={darkMode ? "#666" : "#999"}
+                  stroke={darkMode ? "#555" : "#aaa"}
                   strokeWidth="2"
                 />
                 <text
@@ -132,7 +194,7 @@ export const SpeedGauge: React.FC<SpeedGaugeProps> = ({
                   textAnchor="middle"
                   fill={darkMode ? "#888888" : "#666666"}
                   fontSize="10"
-                  fontWeight="500"
+                  fontWeight="600"
                   fontFamily="Segoe UI, sans-serif"
                 >
                   {tick.value}
@@ -141,81 +203,141 @@ export const SpeedGauge: React.FC<SpeedGaugeProps> = ({
             );
           })}
 
-          {/* Center Needle */}
-          <g
-            transform={`rotate(${needleAngle}, 150, 150)`}
-            style={{ transition: "transform 0.18s cubic-bezier(0.1, 0.9, 0.2, 1)" }}
+          {/* Smoothly Animated Needle via Framer-Motion (motion/react) */}
+          <motion.g
+            animate={{
+              rotate: needleAngle,
+            }}
+            transition={{
+              type: "spring",
+              stiffness: 85,
+              damping: 14,
+              mass: 0.5,
+            }}
+            style={{
+              transformOrigin: "150px 150px",
+            }}
           >
+            {/* Needle Body */}
             <polygon
-              points="146,150 154,150 151,55 149,55"
+              points="146,150 154,150 151.5,52 148.5,52"
               fill={strokeColor}
-              opacity="0.9"
+              opacity="0.95"
             />
-            <circle cx="150" cy="55" r="3" fill={strokeColor} />
-          </g>
+            {/* Needle Tip Indicator */}
+            <circle cx="150" cy="52" r="3.5" fill={strokeColor} />
+            <circle cx="150" cy="52" r="1.5" fill="#ffffff" />
+          </motion.g>
 
           {/* Center Hub */}
           <circle
             cx="150"
             cy="150"
             r="16"
-            fill={darkMode ? "#252525" : "#ffffff"}
+            fill={darkMode ? "#222222" : "#ffffff"}
             stroke={strokeColor}
             strokeWidth="3"
           />
-          <circle cx="150" cy="150" r="6" fill={strokeColor} />
+          <motion.circle
+            cx="150"
+            cy="150"
+            r="6"
+            animate={{ fill: strokeColor }}
+            transition={{ duration: 0.3 }}
+          />
         </svg>
 
-        {/* Numeric Speed Display inside Gauge */}
-        <div className="absolute bottom-4 flex flex-col items-center justify-center text-center">
-          <div className="flex items-baseline gap-1">
-            <span
+        {/* Digital Readout inside Gauge with Framer-Motion transitions */}
+        <div className="absolute bottom-3 flex flex-col items-center justify-center text-center">
+          <div className="flex items-baseline gap-1.5">
+            {/* Animated Digital Speed Counter */}
+            <motion.span
               id="gauge-speed-val"
+              key={phase === "ping" ? "ping" : "speed"}
+              initial={{ scale: 0.95, opacity: 0.9 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 300, damping: 20 }}
               className={`text-4xl font-bold tracking-tight font-mono ${
                 darkMode ? "text-white" : "text-slate-900"
               }`}
             >
-              {phase === "ping" ? (
-                pingMs ? pingMs.toFixed(0) : "--"
-              ) : currentSpeed > 0 ? (
-                currentSpeed.toFixed(currentSpeed >= 100 ? 0 : 1)
-              ) : (
-                "0.0"
-              )}
-            </span>
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              {phase === "ping" ? "ms (ping)" : "Mbps"}
-            </span>
+              {formattedSpeed}
+            </motion.span>
+
+            {/* Digital Speed Unit */}
+            <motion.span
+              animate={{ color: strokeColor }}
+              transition={{ duration: 0.2 }}
+              className="text-xs font-semibold uppercase tracking-wider"
+            >
+              {phase === "ping" ? "ms" : "Mbps"}
+            </motion.span>
           </div>
 
-          {/* Phase status indicator badge */}
-          <div className="mt-1 flex items-center gap-1.5">
-            <span
-              className="w-2 h-2 rounded-full animate-pulse"
-              style={{ backgroundColor: strokeColor }}
-            />
-            <span
-              className={`text-[11px] font-medium tracking-wide uppercase ${
-                darkMode ? "text-slate-300" : "text-slate-600"
-              }`}
-            >
-              {phase === "idle" && "Ready to Test"}
-              {phase === "ping" && "Testing Latency & Jitter..."}
-              {phase === "download" && `Downloading (${progress}%)`}
-              {phase === "upload" && `Uploading (${progress}%)`}
-              {phase === "complete" && "Speed Test Complete"}
-              {phase === "error" && "Test Interrupted"}
-            </span>
+          {/* Smooth Phase status indicator badge with AnimatePresence */}
+          <div className="mt-1 flex items-center justify-center min-h-[22px]">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={phase}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.18 }}
+                className="flex items-center gap-1.5"
+              >
+                <motion.span
+                  className="w-2 h-2 rounded-full"
+                  animate={{
+                    backgroundColor: strokeColor,
+                    scale: phase === "complete" ? 1 : [1, 1.35, 1],
+                  }}
+                  transition={{
+                    scale: {
+                      repeat: phase === "complete" ? 0 : Infinity,
+                      duration: 1.2,
+                      ease: "easeInOut",
+                    },
+                    backgroundColor: { duration: 0.3 },
+                  }}
+                />
+                <span
+                  className={`text-[11px] font-medium tracking-wide uppercase ${
+                    darkMode ? "text-slate-300" : "text-slate-600"
+                  }`}
+                >
+                  {phase === "idle" && "Ready to Test"}
+                  {phase === "ping" && "Testing Latency & Jitter..."}
+                  {phase === "download" && `Downloading (${progress}%)`}
+                  {phase === "upload" && `Uploading (${progress}%)`}
+                  {phase === "complete" && "Speed Test Complete"}
+                  {phase === "error" && "Test Interrupted"}
+                </span>
+              </motion.div>
+            </AnimatePresence>
           </div>
 
           {/* Real-time ping/jitter micro-bar */}
           {pingMs !== undefined && (
-            <div className="mt-1.5 flex items-center gap-3 text-[11px] text-slate-400 font-mono">
-              <span>Ping: <strong className={darkMode ? "text-slate-200" : "text-slate-800"}>{pingMs.toFixed(1)}ms</strong></span>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="mt-1 flex items-center gap-3 text-[11px] text-slate-400 font-mono"
+            >
+              <span>
+                Ping:{" "}
+                <strong className={darkMode ? "text-slate-200" : "text-slate-800"}>
+                  {pingMs.toFixed(1)}ms
+                </strong>
+              </span>
               {jitterMs !== undefined && (
-                <span>Jitter: <strong className={darkMode ? "text-slate-200" : "text-slate-800"}>{jitterMs.toFixed(1)}ms</strong></span>
+                <span>
+                  Jitter:{" "}
+                  <strong className={darkMode ? "text-slate-200" : "text-slate-800"}>
+                    {jitterMs.toFixed(1)}ms
+                  </strong>
+                </span>
               )}
-            </div>
+            </motion.div>
           )}
         </div>
       </div>

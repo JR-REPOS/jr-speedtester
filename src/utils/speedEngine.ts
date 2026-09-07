@@ -250,20 +250,20 @@ export async function runDownloadTest(
   };
 }
 
-// Upload throughput test
+// Upload throughput test with concurrent streaming chunks
 export async function runUploadTest(
   sizeMb: number = 10,
   onProgress: (metrics: SpeedMetrics) => void,
   onSample?: (downloadMbps: number, uploadMbps: number) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  concurrency: number = 2
 ): Promise<SpeedMetrics> {
   const targetBytes = sizeMb * 1024 * 1024;
-  const chunkSizeBytes = 512 * 1024; // 512KB per batch
-  const chunkCount = Math.ceil(targetBytes / chunkSizeBytes);
+  const chunkSizeBytes = 256 * 1024; // 256KB chunks for smooth progressive streaming
+  const totalChunks = Math.ceil(targetBytes / chunkSizeBytes);
   const dummyChunk = new Uint8Array(chunkSizeBytes);
-  // Fill with arbitrary non-zero pattern
   for (let i = 0; i < 256; i++) {
-    dummyChunk[i] = i % 256;
+    dummyChunk[i] = (i * 7) % 256;
   }
 
   const startTime = performance.now();
@@ -271,53 +271,81 @@ export async function runUploadTest(
   let peakMbps = 0;
   let lastSampleTime = startTime;
   let lastBytesUploaded = 0;
+  let chunkIndex = 0;
 
-  for (let i = 0; i < chunkCount; i++) {
-    if (signal?.aborted) throw new Error("Test aborted");
+  const uploadWorker = async () => {
+    while (chunkIndex < totalChunks) {
+      if (signal?.aborted) throw new Error("Test aborted");
+      const currentIdx = chunkIndex++;
+      const currentChunkSize = Math.min(
+        chunkSizeBytes,
+        targetBytes - currentIdx * chunkSizeBytes
+      );
+      if (currentChunkSize <= 0) break;
 
-    const currentChunkSize = Math.min(chunkSizeBytes, targetBytes - bytesUploaded);
-    const slice = currentChunkSize === chunkSizeBytes ? dummyChunk : dummyChunk.subarray(0, currentChunkSize);
+      const slice =
+        currentChunkSize === chunkSizeBytes
+          ? dummyChunk
+          : dummyChunk.subarray(0, currentChunkSize);
 
-    await fetch("/api/speedtest/upload", {
-      method: "POST",
-      headers: { "Content-Type": "application/octet-stream" },
-      body: slice,
-      signal,
-    });
+      try {
+        await fetch(`/api/speedtest/upload?seq=${currentIdx}&t=${Date.now()}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: slice,
+          signal,
+        });
 
-    bytesUploaded += currentChunkSize;
-    const now = performance.now();
-    const elapsedSinceLast = (now - lastSampleTime) / 1000;
+        bytesUploaded += currentChunkSize;
+        const now = performance.now();
+        const elapsedSinceLast = (now - lastSampleTime) / 1000;
 
-    if (elapsedSinceLast >= 0.15 || i === chunkCount - 1) {
-      const deltaBytes = bytesUploaded - lastBytesUploaded;
-      const currentWindowMbps = (deltaBytes * 8) / (Math.max(elapsedSinceLast, 0.01) * 1000000);
-      const totalElapsedSeconds = Math.max((now - startTime) / 1000, 0.05);
-      const overallAverageMbps = (bytesUploaded * 8) / (totalElapsedSeconds * 1000000);
+        // Sample every ~120ms or on completion
+        if (elapsedSinceLast >= 0.12 || bytesUploaded >= targetBytes) {
+          const deltaBytes = bytesUploaded - lastBytesUploaded;
+          const currentWindowMbps =
+            (deltaBytes * 8) / (Math.max(elapsedSinceLast, 0.01) * 1000000);
+          const totalElapsedSeconds = Math.max((now - startTime) / 1000, 0.05);
+          const overallAverageMbps =
+            (bytesUploaded * 8) / (totalElapsedSeconds * 1000000);
 
-      if (currentWindowMbps > peakMbps) {
-        peakMbps = currentWindowMbps;
+          if (currentWindowMbps > peakMbps) {
+            peakMbps = currentWindowMbps;
+          }
+
+          const progressPercent = Math.min(
+            100,
+            Math.round((bytesUploaded / targetBytes) * 100)
+          );
+
+          onProgress({
+            currentMbps: Number(currentWindowMbps.toFixed(2)),
+            peakMbps: Number(peakMbps.toFixed(2)),
+            averageMbps: Number(overallAverageMbps.toFixed(2)),
+            bytesTransferred: bytesUploaded,
+            durationSeconds: Number(totalElapsedSeconds.toFixed(2)),
+            progressPercent,
+          });
+
+          if (onSample) {
+            onSample(0, Number(currentWindowMbps.toFixed(2)));
+          }
+
+          lastSampleTime = now;
+          lastBytesUploaded = bytesUploaded;
+        }
+      } catch (err: any) {
+        if (err.name === "AbortError") throw err;
+        // Keep going if a chunk fails transiently
       }
-
-      const progressPercent = Math.min(100, Math.round((bytesUploaded / targetBytes) * 100));
-
-      onProgress({
-        currentMbps: Number(currentWindowMbps.toFixed(2)),
-        peakMbps: Number(peakMbps.toFixed(2)),
-        averageMbps: Number(overallAverageMbps.toFixed(2)),
-        bytesTransferred: bytesUploaded,
-        durationSeconds: Number(totalElapsedSeconds.toFixed(2)),
-        progressPercent,
-      });
-
-      if (onSample) {
-        onSample(0, Number(currentWindowMbps.toFixed(2)));
-      }
-
-      lastSampleTime = now;
-      lastBytesUploaded = bytesUploaded;
     }
-  }
+  };
+
+  // Run workers concurrently based on concurrency setting
+  const workers = Array.from({ length: Math.max(1, concurrency) }, () =>
+    uploadWorker()
+  );
+  await Promise.all(workers);
 
   const finalDurationSec = Math.max((performance.now() - startTime) / 1000, 0.05);
   const finalAvgMbps = (bytesUploaded * 8) / (finalDurationSec * 1000000);

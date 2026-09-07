@@ -171,18 +171,22 @@ export const AdapterList: React.FC<AdapterListProps> = ({
                         <span className="font-semibold text-sm text-slate-900 dark:text-slate-100">
                           {adapter.name}
                         </span>
+                        <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-slate-500/15 text-slate-400 border border-slate-500/20">
+                          {adapter.interfaceName || adapter.id}
+                        </span>
                         {adapter.isPrimary && (
                           <span className="px-1.5 py-0.2 rounded text-[10px] bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 font-medium">
                             Default Gateway
                           </span>
                         )}
                         {isActive && (
-                          <span className="px-1.5 py-0.2 rounded text-[10px] bg-[#0078D7] text-white font-medium">
-                            Active Target
+                          <span className="px-1.5 py-0.2 rounded text-[10px] bg-[#0078D7] text-white font-medium flex items-center gap-1">
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            Selected for Test
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-400 line-clamp-1">
+                      <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
                         {adapter.description}
                       </p>
                     </div>
@@ -272,19 +276,37 @@ export const AdapterList: React.FC<AdapterListProps> = ({
                   <span>Adapter Properties</span>
                 </button>
 
-                <button
-                  disabled={isTesting}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    soundManager.playClick();
-                    onSelectAdapter(adapter);
-                    onStartTest(adapter);
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-[#0078D7] hover:bg-[#106EBE] active:bg-[#005A9E] disabled:opacity-50 text-white rounded text-xs font-semibold shadow-sm transition-colors"
-                >
-                  <Play className="w-3 h-3 fill-current" />
-                  <span>Speed Test</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {!isActive && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        soundManager.playClick();
+                        onSelectAdapter(adapter);
+                      }}
+                      className={`text-xs px-2.5 py-1 rounded font-medium border transition-colors ${
+                        darkMode
+                          ? "border-[#444] hover:bg-[#333] text-slate-200"
+                          : "border-slate-300 hover:bg-slate-100 text-slate-800"
+                      }`}
+                    >
+                      Select Adapter
+                    </button>
+                  )}
+                  <button
+                    disabled={isTesting}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      soundManager.playClick();
+                      onSelectAdapter(adapter);
+                      onStartTest(adapter);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-[#0078D7] hover:bg-[#106EBE] active:bg-[#005A9E] disabled:opacity-50 text-white rounded text-xs font-semibold shadow-sm transition-colors"
+                  >
+                    <Play className="w-3 h-3 fill-current" />
+                    <span>Run Speed Test</span>
+                  </button>
+                </div>
               </div>
             </div>
           );

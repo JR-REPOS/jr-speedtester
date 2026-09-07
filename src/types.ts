@@ -55,6 +55,8 @@ export interface SpeedTestResult {
   id: string;
   adapterId: string;
   adapterName: string;
+  adapterType?: AdapterType;
+  adapterInterface?: string;
   timestamp: number;
   ping: number; // ms
   jitter: number; // ms

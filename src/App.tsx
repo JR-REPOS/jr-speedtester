@@ -22,6 +22,7 @@ import { SpeedGauge } from "./components/SpeedGauge";
 import { TaskManagerGraph } from "./components/TaskManagerGraph";
 import { AdapterList } from "./components/AdapterList";
 import { AdapterComparison } from "./components/AdapterComparison";
+import { SpeedTestHistory } from "./components/SpeedTestHistory";
 import { PowerShellModal } from "./components/PowerShellModal";
 import { SettingsModal } from "./components/SettingsModal";
 import {
@@ -42,7 +43,13 @@ import {
   Wifi,
   Server,
   AlertCircle,
-  ExternalLink,
+  History,
+  Download,
+  Upload,
+  Shield,
+  RotateCcw,
+  ArrowRight,
+  TrendingUp,
 } from "lucide-react";
 
 export default function App() {
@@ -57,7 +64,7 @@ export default function App() {
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState<
-    "test" | "adapters" | "comparison" | "monitor"
+    "test" | "adapters" | "history" | "comparison" | "monitor"
   >("test");
 
   // Speed test parameters & settings
@@ -81,7 +88,87 @@ export default function App() {
   const [downloadMetrics, setDownloadMetrics] = useState<SpeedMetrics | null>(null);
   const [uploadMetrics, setUploadMetrics] = useState<SpeedMetrics | null>(null);
   const [activeResult, setActiveResult] = useState<SpeedTestResult | null>(null);
-  const [testHistory, setTestHistory] = useState<SpeedTestResult[]>([]);
+
+  // Persistent historical test records
+  const [testHistory, setTestHistory] = useState<SpeedTestResult[]>(() => {
+    try {
+      const stored = localStorage.getItem("win10_speedtest_history");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn("Failed to load history from localStorage", e);
+    }
+
+    // Default realistic historical benchmarks
+    return [
+      {
+        id: "seed-hist-1",
+        adapterId: "adapter-eth-primary",
+        adapterName: "Ethernet",
+        adapterType: "Ethernet",
+        adapterInterface: "eth0",
+        timestamp: Date.now() - 1000 * 60 * 25,
+        ping: 11.2,
+        jitter: 1.4,
+        downloadSpeed: 188.4,
+        uploadSpeed: 94.2,
+        downloadBytes: 25 * 1024 * 1024,
+        uploadBytes: 10 * 1024 * 1024,
+        grade: "A+",
+        suitability: {
+          gaming: "Excellent",
+          streaming4k: "Excellent",
+          videoCalls: "Excellent",
+          largeUploads: "Excellent",
+        },
+      },
+      {
+        id: "seed-hist-2",
+        adapterId: "adapter-wifi-6",
+        adapterName: "Wi-Fi",
+        adapterType: "Wi-Fi",
+        adapterInterface: "wlan0",
+        timestamp: Date.now() - 1000 * 60 * 90,
+        ping: 21.6,
+        jitter: 3.2,
+        downloadSpeed: 124.6,
+        uploadSpeed: 52.8,
+        downloadBytes: 25 * 1024 * 1024,
+        uploadBytes: 10 * 1024 * 1024,
+        grade: "A",
+        suitability: {
+          gaming: "Good",
+          streaming4k: "Excellent",
+          videoCalls: "Excellent",
+          largeUploads: "Good",
+        },
+      },
+      {
+        id: "seed-hist-3",
+        adapterId: "adapter-vpn-work",
+        adapterName: "Corporate VPN",
+        adapterType: "VPN",
+        adapterInterface: "tun0",
+        timestamp: Date.now() - 1000 * 60 * 180,
+        ping: 38.5,
+        jitter: 5.1,
+        downloadSpeed: 74.2,
+        uploadSpeed: 38.0,
+        downloadBytes: 25 * 1024 * 1024,
+        uploadBytes: 10 * 1024 * 1024,
+        grade: "B",
+        suitability: {
+          gaming: "Fair",
+          streaming4k: "Good",
+          videoCalls: "Good",
+          largeUploads: "Good",
+        },
+      },
+    ];
+  });
+
   const [graphDataPoints, setGraphDataPoints] = useState<GraphDataPoint[]>([]);
 
   // Abort controller ref
@@ -120,7 +207,7 @@ export default function App() {
     }
   };
 
-  const activeAdapter =
+  const activeAdapter: NetworkAdapter =
     adapters.find((a) => a.id === selectedAdapterId) ||
     adapters[0] || {
       id: "default-adapter",
@@ -155,7 +242,7 @@ export default function App() {
     });
   };
 
-  // Start Speed Test for an adapter
+  // Start Speed Test for an adapter (measuring Ping, Download, and Upload)
   const startSpeedTest = async (targetAdapter?: NetworkAdapter) => {
     const adapterToTest = targetAdapter || activeAdapter;
     setSelectedAdapterId(adapterToTest.id);
@@ -207,7 +294,7 @@ export default function App() {
       );
       setDownloadMetrics(dMetrics);
 
-      // 3. UPLOAD THROUGHPUT PHASE
+      // 3. UPLOAD THROUGHPUT PHASE (measuring upload speed of selected adapter)
       setPhase("upload");
       setCurrentSpeed(0);
       setGaugeProgress(0);
@@ -220,7 +307,8 @@ export default function App() {
           setGaugeProgress(progress.progressPercent);
         },
         (down, up) => handleThroughputSample(down, up),
-        abortCtrl.signal
+        abortCtrl.signal,
+        settings.parallelStreams
       );
       setUploadMetrics(uMetrics);
 
@@ -241,6 +329,8 @@ export default function App() {
         id: `test-${Date.now()}`,
         adapterId: adapterToTest.id,
         adapterName: adapterToTest.name,
+        adapterType: adapterToTest.type,
+        adapterInterface: adapterToTest.interfaceName,
         timestamp: Date.now(),
         ping: pMetrics.avgMs,
         jitter: pMetrics.jitterMs,
@@ -253,7 +343,17 @@ export default function App() {
       };
 
       setActiveResult(result);
-      setTestHistory((prev) => [result, ...prev]);
+
+      // Persist to state and localStorage
+      setTestHistory((prev) => {
+        const updated = [result, ...prev];
+        try {
+          localStorage.setItem("win10_speedtest_history", JSON.stringify(updated));
+        } catch (e) {
+          console.warn("Failed to persist history to localStorage", e);
+        }
+        return updated;
+      });
 
       // Update adapter's last tested info
       setAdapters((prev) =>
@@ -289,6 +389,53 @@ export default function App() {
       setSelectedAdapterId(ad.id);
       await startSpeedTest(ad);
       await new Promise((r) => setTimeout(r, 1000));
+    }
+  };
+
+  // History action handlers
+  const handleClearHistory = () => {
+    setTestHistory([]);
+    try {
+      localStorage.removeItem("win10_speedtest_history");
+    } catch (e) {
+      console.warn("Failed to clear localStorage history", e);
+    }
+  };
+
+  const handleDeleteHistoryRecord = (recordId: string) => {
+    setTestHistory((prev) => {
+      const updated = prev.filter((r) => r.id !== recordId);
+      try {
+        localStorage.setItem("win10_speedtest_history", JSON.stringify(updated));
+      } catch (e) {
+        console.warn("Failed to update localStorage history", e);
+      }
+      return updated;
+    });
+  };
+
+  const handleRetestFromHistory = (adapterId: string) => {
+    const target = adapters.find((a) => a.id === adapterId);
+    if (target) {
+      setSelectedAdapterId(target.id);
+      setActiveTab("test");
+      startSpeedTest(target);
+    } else {
+      setActiveTab("test");
+      startSpeedTest();
+    }
+  };
+
+  const getAdapterIcon = (type: NetworkAdapter["type"]) => {
+    switch (type) {
+      case "Wi-Fi":
+        return <Wifi className="w-4 h-4 text-sky-400" />;
+      case "Ethernet":
+        return <Server className="w-4 h-4 text-[#0078D7]" />;
+      case "VPN":
+        return <Shield className="w-4 h-4 text-purple-400" />;
+      default:
+        return <Server className="w-4 h-4 text-slate-400" />;
     }
   };
 
@@ -344,7 +491,7 @@ export default function App() {
               <span>Speed Test</span>
             </button>
 
-            {/* Network Adapters Tab ("list adapters if more than 1") */}
+            {/* Network Adapters Tab */}
             <button
               id="nav-tab-adapters"
               onClick={() => {
@@ -371,6 +518,36 @@ export default function App() {
                 }`}
               >
                 {adapters.length}
+              </span>
+            </button>
+
+            {/* Speed Test History & Trends Tab */}
+            <button
+              id="nav-tab-history"
+              onClick={() => {
+                soundManager.playClick();
+                setActiveTab("history");
+              }}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded text-xs font-medium transition-colors text-left ${
+                activeTab === "history"
+                  ? "bg-[#0078D7] text-white shadow-xs"
+                  : darkMode
+                  ? "hover:bg-[#2b2b2b] text-slate-300"
+                  : "hover:bg-[#dfdfdf] text-slate-700"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <History className="w-4 h-4 shrink-0" />
+                <span>History & Trends</span>
+              </div>
+              <span
+                className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                  activeTab === "history"
+                    ? "bg-white/20 text-white"
+                    : "bg-[#0078D7]/15 text-[#0078D7]"
+                }`}
+              >
+                {testHistory.length}
               </span>
             </button>
 
@@ -457,7 +634,88 @@ export default function App() {
           {/* TAB 1: SPEED TEST VIEW */}
           {activeTab === "test" && (
             <div className="space-y-4 max-w-5xl mx-auto">
-              {/* Adapter Selector & Summary Strip */}
+              {/* Feature: List all available network adapters & mechanism to select target if > 1 */}
+              {adapters.length > 1 && (
+                <div
+                  id="multi-adapter-selection-panel"
+                  className={`p-3 rounded border space-y-2.5 ${
+                    darkMode
+                      ? "bg-[#232323] border-[#383838]"
+                      : "bg-white border-[#d8d8d8]"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-[#0078D7]" />
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-300 dark:text-slate-200">
+                        Select Network Adapter for Speed Test ({adapters.length} Detected):
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-400 font-sans">
+                      Click any adapter card below to test its throughput
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                    {adapters.map((ad) => {
+                      const isSelected = ad.id === selectedAdapterId;
+                      return (
+                        <button
+                          key={ad.id}
+                          id={`select-adapter-${ad.id}`}
+                          onClick={() => {
+                            soundManager.playClick();
+                            setSelectedAdapterId(ad.id);
+                          }}
+                          className={`p-2.5 rounded border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
+                            isSelected
+                              ? darkMode
+                                ? "bg-[#2d2d2d] border-[#0078D7] ring-1 ring-[#0078D7] shadow-sm"
+                                : "bg-[#eaf3fc] border-[#0078D7] ring-1 ring-[#0078D7] shadow-sm"
+                              : darkMode
+                              ? "bg-[#1d1d1d] border-[#363636] hover:border-[#555] text-slate-300"
+                              : "bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700"
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-center justify-between w-full mb-1">
+                              <div className="flex items-center gap-1.5 font-semibold text-xs text-slate-900 dark:text-white">
+                                {getAdapterIcon(ad.type)}
+                                <span className="truncate">{ad.name}</span>
+                              </div>
+                              {isSelected ? (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[9px] font-bold text-[#0078D7] uppercase">Active</span>
+                                  <span className="w-2.5 h-2.5 rounded-full bg-[#0078D7] ring-2 ring-[#0078D7]/30" />
+                                </div>
+                              ) : (
+                                <span className="w-2.5 h-2.5 rounded-full border border-slate-400" />
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono truncate">
+                              {ad.interfaceName} • {ad.linkSpeedMbps} Mbps
+                            </div>
+                            <div className="text-[10px] text-slate-400 line-clamp-1 mt-0.5 font-sans">
+                              {ad.description}
+                            </div>
+                          </div>
+
+                          <div className="mt-2 pt-1.5 border-t border-inherit/40 flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                            <span>IP: {ad.ipv4 || "DHCP Waiting"}</span>
+                            {ad.lastTested && (
+                              <span className="text-emerald-500 font-bold">
+                                {ad.lastTested.downloadSpeed.toFixed(0)}↓ / {ad.lastTested.uploadSpeed.toFixed(0)}↑
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Active Adapter Summary Strip */}
               <div
                 className={`p-3 rounded border flex flex-wrap items-center justify-between gap-3 ${
                   darkMode
@@ -467,18 +725,14 @@ export default function App() {
               >
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded bg-[#0078D7]/15 flex items-center justify-center text-[#0078D7]">
-                    {activeAdapter.type === "Wi-Fi" ? (
-                      <Wifi className="w-4 h-4" />
-                    ) : (
-                      <Server className="w-4 h-4" />
-                    )}
+                    {getAdapterIcon(activeAdapter.type)}
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                        Testing Adapter:
+                        Active Testing Adapter:
                       </span>
-                      {/* Adapter Switcher Dropdown */}
+                      {/* Compact Dropdown Switcher */}
                       <select
                         id="select-target-adapter"
                         value={selectedAdapterId}
@@ -494,20 +748,20 @@ export default function App() {
                       >
                         {adapters.map((a) => (
                           <option key={a.id} value={a.id}>
-                            {a.name} - {a.description} ({a.linkSpeedMbps} Mbps)
+                            {a.name} ({a.interfaceName}) - {a.description} [{a.linkSpeedMbps} Mbps]
                           </option>
                         ))}
                       </select>
                     </div>
-                    <div className="mt-0.5 text-[11px] text-slate-400 flex items-center gap-3 font-mono">
+                    <div className="mt-0.5 text-[11px] text-slate-400 flex items-center gap-3 font-mono flex-wrap">
                       <span>IP: {activeAdapter.ipv4 || "Waiting for DHCP"}</span>
                       <span>Link: {activeAdapter.linkSpeedMbps} Mbps</span>
                       <span>MAC: {activeAdapter.mac}</span>
+                      <span>Interface: {activeAdapter.interfaceName}</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Switch to Adapter list if more than 1 */}
                 {adapters.length > 1 && (
                   <button
                     onClick={() => {
@@ -516,7 +770,7 @@ export default function App() {
                     }}
                     className="text-xs text-[#0078D7] hover:underline flex items-center gap-1 font-medium"
                   >
-                    <span>View all {adapters.length} adapters</span>
+                    <span>View all {adapters.length} adapters details</span>
                     <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 )}
@@ -530,7 +784,7 @@ export default function App() {
                     : "bg-white border-[#d8d8d8]"
                 }`}
               >
-                {/* Visual Speedometer */}
+                {/* Visual Speedometer with Framer-Motion Animations */}
                 <SpeedGauge
                   phase={phase}
                   currentSpeed={currentSpeed}
@@ -546,16 +800,16 @@ export default function App() {
                     <button
                       id="btn-start-speedtest"
                       onClick={() => startSpeedTest()}
-                      className="px-8 py-2.5 bg-[#0078D7] hover:bg-[#106EBE] active:bg-[#005A9E] text-white rounded font-semibold text-sm shadow-md transition-all flex items-center gap-2"
+                      className="px-8 py-2.5 bg-[#0078D7] hover:bg-[#106EBE] active:bg-[#005A9E] text-white rounded font-semibold text-sm shadow-md transition-all flex items-center gap-2 cursor-pointer"
                     >
                       <Play className="w-4 h-4 fill-current" />
-                      <span>{phase === "complete" ? "TEST AGAIN" : "START SPEED TEST"}</span>
+                      <span>{phase === "complete" ? "TEST AGAIN" : `TEST ${activeAdapter.name.toUpperCase()}`}</span>
                     </button>
                   ) : (
                     <button
                       id="btn-cancel-speedtest"
                       onClick={cancelTest}
-                      className="px-8 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded font-semibold text-sm shadow-md transition-all flex items-center gap-2"
+                      className="px-8 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded font-semibold text-sm shadow-md transition-all flex items-center gap-2 cursor-pointer"
                     >
                       <Square className="w-4 h-4 fill-current" />
                       <span>CANCEL TEST</span>
@@ -563,6 +817,163 @@ export default function App() {
                   )}
                 </div>
               </div>
+
+              {/* PROMINENT TEST COMPLETE DISPLAY: Clearly displaying Download and Upload speeds side-by-side */}
+              {activeResult && phase === "complete" && (
+                <div
+                  id="test-completion-summary"
+                  className={`p-4 rounded border space-y-4 ${
+                    darkMode
+                      ? "bg-[#202020] border-[#0078D7]/40 ring-1 ring-[#0078D7]/20 shadow-lg"
+                      : "bg-[#f4f8fd] border-[#0078D7]/40 ring-1 ring-[#0078D7]/20 shadow-lg"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-inherit">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                      <div>
+                        <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                          Speed Test Complete for {activeResult.adapterName}
+                        </h3>
+                        <span className="text-[11px] text-slate-400">
+                          Measured on {activeResult.adapterInterface || "primary interface"} • Performance Grade:{" "}
+                          <strong className="text-emerald-500">{activeResult.grade}</strong>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          soundManager.playClick();
+                          setActiveTab("history");
+                        }}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-[#0078D7] text-white rounded text-xs font-semibold shadow-xs hover:bg-[#106EBE]"
+                      >
+                        <History className="w-3.5 h-3.5" />
+                        <span>View in History & Trends</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Dual Hero Metric Panels: Download Speed & Upload Speed */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Download Speed Showcase Tile */}
+                    <div
+                      className={`p-4 rounded border relative overflow-hidden ${
+                        darkMode ? "bg-[#262626] border-[#383838]" : "bg-white border-[#d8d8d8]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded bg-[#0078D7]/15 flex items-center justify-center text-[#0078D7]">
+                            <Download className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <span className="text-xs uppercase font-bold text-[#0078D7] tracking-wider block">
+                              Download Speed
+                            </span>
+                            <span className="text-[10px] text-slate-400">Incoming Throughput</span>
+                          </div>
+                        </div>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#0078D7]/15 text-[#0078D7] border border-[#0078D7]/30">
+                          Peak: {downloadMetrics?.peakMbps || activeResult.downloadSpeed.toFixed(1)} Mbps
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex items-baseline gap-1.5">
+                        <span className="text-4xl font-extrabold font-mono text-[#0078D7]">
+                          {activeResult.downloadSpeed.toFixed(1)}
+                        </span>
+                        <span className="text-sm font-semibold uppercase text-slate-400">Mbps</span>
+                      </div>
+
+                      {/* Download link speed capacity comparison bar */}
+                      <div className="mt-3 space-y-1">
+                        <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                          <span>Capacity Utilization</span>
+                          <span>
+                            {((activeResult.downloadSpeed / Math.max(activeAdapter.linkSpeedMbps, 1)) * 100).toFixed(1)}% of {activeAdapter.linkSpeedMbps} Mbps link
+                          </span>
+                        </div>
+                        <div className="w-full h-2 bg-black/20 dark:bg-white/10 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[#0078D7] rounded-full transition-all duration-500"
+                            style={{
+                              width: `${Math.min(
+                                100,
+                                (activeResult.downloadSpeed / Math.max(activeAdapter.linkSpeedMbps, 1)) * 100
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-2 text-[11px] text-slate-400 font-mono flex items-center justify-between">
+                        <span>Data Transferred: {(activeResult.downloadBytes / 1024 / 1024).toFixed(1)} MB</span>
+                        <span>Duration: {downloadMetrics?.durationSeconds || 3.5}s</span>
+                      </div>
+                    </div>
+
+                    {/* Upload Speed Showcase Tile */}
+                    <div
+                      className={`p-4 rounded border relative overflow-hidden ${
+                        darkMode ? "bg-[#262626] border-[#383838]" : "bg-white border-[#d8d8d8]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded bg-purple-500/15 flex items-center justify-center text-purple-400">
+                            <Upload className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <span className="text-xs uppercase font-bold text-purple-400 tracking-wider block">
+                              Upload Speed
+                            </span>
+                            <span className="text-[10px] text-slate-400">Outgoing Throughput</span>
+                          </div>
+                        </div>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-purple-500/15 text-purple-400 border border-purple-500/30">
+                          Peak: {uploadMetrics?.peakMbps || activeResult.uploadSpeed.toFixed(1)} Mbps
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex items-baseline gap-1.5">
+                        <span className="text-4xl font-extrabold font-mono text-purple-400">
+                          {activeResult.uploadSpeed.toFixed(1)}
+                        </span>
+                        <span className="text-sm font-semibold uppercase text-slate-400">Mbps</span>
+                      </div>
+
+                      {/* Upload link speed capacity comparison bar */}
+                      <div className="mt-3 space-y-1">
+                        <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                          <span>Capacity Utilization</span>
+                          <span>
+                            {((activeResult.uploadSpeed / Math.max(activeAdapter.linkSpeedMbps, 1)) * 100).toFixed(1)}% of {activeAdapter.linkSpeedMbps} Mbps link
+                          </span>
+                        </div>
+                        <div className="w-full h-2 bg-black/20 dark:bg-white/10 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                            style={{
+                              width: `${Math.min(
+                                100,
+                                (activeResult.uploadSpeed / Math.max(activeAdapter.linkSpeedMbps, 1)) * 100
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-2 text-[11px] text-slate-400 font-mono flex items-center justify-between">
+                        <span>Data Transferred: {(activeResult.uploadBytes / 1024 / 1024).toFixed(1)} MB</span>
+                        <span>Duration: {uploadMetrics?.durationSeconds || 2.8}s</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* 4 Core Metrics Cards (Ping, Jitter, Download, Upload) */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -738,7 +1149,7 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 2: NETWORK ADAPTERS VIEW (Core prompt requirement) */}
+          {/* TAB 2: NETWORK ADAPTERS VIEW */}
           {activeTab === "adapters" && (
             <div className="max-w-5xl mx-auto">
               <AdapterList
@@ -756,7 +1167,19 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 3: MULTI-ADAPTER COMPARISON */}
+          {/* TAB 3: SPEED TEST HISTORY & TRENDS */}
+          {activeTab === "history" && (
+            <SpeedTestHistory
+              history={testHistory}
+              adapters={adapters}
+              onRetestAdapter={handleRetestFromHistory}
+              onClearHistory={handleClearHistory}
+              onDeleteRecord={handleDeleteHistoryRecord}
+              darkMode={darkMode}
+            />
+          )}
+
+          {/* TAB 4: MULTI-ADAPTER COMPARISON */}
           {activeTab === "comparison" && (
             <div className="max-w-5xl mx-auto">
               <AdapterComparison
@@ -774,7 +1197,7 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 4: TASK MANAGER MONITOR VIEW */}
+          {/* TAB 5: TASK MANAGER MONITOR VIEW */}
           {activeTab === "monitor" && (
             <div className="max-w-5xl mx-auto space-y-4">
               <div
@@ -841,7 +1264,7 @@ export default function App() {
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>Adapter: {activeAdapter.name}</span>
+            <span>Adapter: {activeAdapter.name} ({activeAdapter.interfaceName})</span>
           </span>
           <span>•</span>
           <span>Status: {activeAdapter.status}</span>
@@ -851,6 +1274,8 @@ export default function App() {
 
         <div className="flex items-center gap-3">
           <span>Adapters: {adapters.length}</span>
+          <span>•</span>
+          <span>History: {testHistory.length}</span>
           <span>•</span>
           <span>Phase: {phase.toUpperCase()}</span>
         </div>
