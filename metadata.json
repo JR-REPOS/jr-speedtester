@@ -1,0 +1,6 @@
+{
+  "name": "Network Adapter Speed Test",
+  "description": "Windows 10 network speed test utility with multi-adapter detection, latency, jitter, download, and upload benchmarking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
