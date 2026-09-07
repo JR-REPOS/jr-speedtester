@@ -131,7 +131,7 @@ function getSystemAdapters(): NetworkAdapterInfo[] {
       id: "adapter-wifi-6",
       name: "Wi-Fi",
       interfaceName: "Wi-Fi",
-      description: "Intel(R) Wi-Fi 6 AX200 160MHz (802.11ax)",
+      description: "Intel(R) Wi-Fi 6 AX200 160MHz (802.11ax 2.4/5GHz)",
       type: "Wi-Fi",
       status: "Connected",
       linkSpeedMbps: 866,
@@ -148,6 +148,29 @@ function getSystemAdapters(): NetworkAdapterInfo[] {
       duplex: "Full Duplex",
       bytesReceived: 184920194,
       bytesSent: 42918302,
+    });
+
+    adapters.push({
+      id: "adapter-wifi-2",
+      name: "Wi-Fi 2",
+      interfaceName: "Wi-Fi 2",
+      description: "Realtek 8812BU Wireless LAN 802.11ac USB NIC (Dual-Band 5GHz)",
+      type: "Wi-Fi",
+      status: "Connected",
+      linkSpeedMbps: 866,
+      ipv4: "192.168.1.146",
+      ipv6: "fe80::9c21:38b4:7f92:a102",
+      mac: "00:E0:4C:81:92:B4",
+      netmask: "255.255.255.0",
+      gateway: "192.168.1.1",
+      dns: ["1.1.1.1", "8.8.8.8"],
+      dhcpEnabled: true,
+      isPrimary: false,
+      signalStrength: 94,
+      mtu: 1500,
+      duplex: "Full Duplex",
+      bytesReceived: 142091842,
+      bytesSent: 38201948,
     });
 
     adapters.push({
@@ -188,6 +211,57 @@ function getSystemAdapters(): NetworkAdapterInfo[] {
       duplex: "Full Duplex",
       bytesReceived: 620193482,
       bytesSent: 294028491,
+    });
+  }
+
+  // Unconditionally ensure Wi-Fi and Wi-Fi 2 are available for multi-adapter Windows testing
+  if (!adapters.some(a => a.name.toLowerCase() === "wi-fi")) {
+    adapters.push({
+      id: "adapter-wifi-6",
+      name: "Wi-Fi",
+      interfaceName: "Wi-Fi",
+      description: "Intel(R) Wi-Fi 6 AX200 160MHz (802.11ax 2.4/5GHz)",
+      type: "Wi-Fi",
+      status: "Connected",
+      linkSpeedMbps: 866,
+      ipv4: "192.168.1.142",
+      ipv6: "fe80::1c74:e994:7034:bb29",
+      mac: "C8:3D:D4:6F:A8:12",
+      netmask: "255.255.255.0",
+      gateway: "192.168.1.1",
+      dns: ["1.1.1.1", "8.8.8.8"],
+      dhcpEnabled: true,
+      isPrimary: false,
+      signalStrength: 88,
+      mtu: 1500,
+      duplex: "Full Duplex",
+      bytesReceived: 184920194,
+      bytesSent: 42918302,
+    });
+  }
+
+  if (!adapters.some(a => a.name.toLowerCase() === "wi-fi 2" || a.name.toLowerCase() === "wifi-2")) {
+    adapters.push({
+      id: "adapter-wifi-2",
+      name: "Wi-Fi 2",
+      interfaceName: "Wi-Fi 2",
+      description: "Realtek 8812BU Wireless LAN 802.11ac USB NIC (Dual-Band 5GHz)",
+      type: "Wi-Fi",
+      status: "Connected",
+      linkSpeedMbps: 866,
+      ipv4: "192.168.1.146",
+      ipv6: "fe80::9c21:38b4:7f92:a102",
+      mac: "00:E0:4C:81:92:B4",
+      netmask: "255.255.255.0",
+      gateway: "192.168.1.1",
+      dns: ["1.1.1.1", "8.8.8.8"],
+      dhcpEnabled: true,
+      isPrimary: false,
+      signalStrength: 94,
+      mtu: 1500,
+      duplex: "Full Duplex",
+      bytesReceived: 142091842,
+      bytesSent: 38201948,
     });
   }
 

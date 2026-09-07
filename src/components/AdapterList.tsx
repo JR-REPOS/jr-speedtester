@@ -14,6 +14,10 @@ import {
   ChevronRight,
   Sparkles,
   Zap,
+  Search,
+  X,
+  Laptop,
+  Plus,
 } from "lucide-react";
 import { soundManager } from "../utils/audio";
 
@@ -23,6 +27,7 @@ interface AdapterListProps {
   onSelectAdapter: (adapter: NetworkAdapter) => void;
   onStartTest: (adapter: NetworkAdapter) => void;
   onRefreshAdapters: () => void;
+  onOpenScanner?: () => void;
   isTesting: boolean;
   darkMode: boolean;
 }
@@ -33,11 +38,13 @@ export const AdapterList: React.FC<AdapterListProps> = ({
   onSelectAdapter,
   onStartTest,
   onRefreshAdapters,
+  onOpenScanner,
   isTesting,
   darkMode,
 }) => {
   const [selectedForDetails, setSelectedForDetails] = useState<NetworkAdapter | null>(null);
   const [filterType, setFilterType] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   const getAdapterIcon = (type: NetworkAdapter["type"], signalStrength?: number) => {
     switch (type) {
@@ -59,8 +66,20 @@ export const AdapterList: React.FC<AdapterListProps> = ({
   };
 
   const filteredAdapters = adapters.filter((a) => {
-    if (filterType === "all") return true;
-    return a.type.toLowerCase() === filterType.toLowerCase();
+    if (filterType !== "all" && a.type.toLowerCase() !== filterType.toLowerCase()) {
+      return false;
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const matchName = a.name.toLowerCase().includes(q);
+      const matchDesc = a.description.toLowerCase().includes(q);
+      const matchIface = (a.interfaceName || "").toLowerCase().includes(q);
+      const matchIp = (a.ipv4 || "").toLowerCase().includes(q);
+      const matchMac = (a.mac || "").toLowerCase().includes(q);
+      const matchType = a.type.toLowerCase().includes(q);
+      return matchName || matchDesc || matchIface || matchIp || matchMac || matchType;
+    }
+    return true;
   });
 
   return (
@@ -96,8 +115,54 @@ export const AdapterList: React.FC<AdapterListProps> = ({
           </div>
         </div>
 
+        {/* Action button to open Scanner */}
+        {onOpenScanner && (
+          <button
+            onClick={() => {
+              soundManager.playClick();
+              onOpenScanner();
+            }}
+            className="px-3 py-1.5 bg-[#0078D7] hover:bg-[#106EBE] text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+          >
+            <Laptop className="w-3.5 h-3.5" />
+            <span>Scan Device Hardware</span>
+          </button>
+        )}
+      </div>
+
+      {/* Search & Filter Bar */}
+      <div
+        className={`p-2.5 rounded border flex flex-wrap items-center justify-between gap-2 ${
+          darkMode ? "bg-[#202020] border-[#333]" : "bg-white border-[#e0e0e0]"
+        }`}
+      >
+        {/* Search Input Box */}
+        <div className="relative flex-1 min-w-[240px] max-w-md">
+          <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+          <input
+            id="input-search-adapters"
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search adapters (e.g. Wi-Fi, Wi-Fi 2, Ethernet, IP...)"
+            className={`w-full pl-8 pr-7 py-1.5 rounded text-xs border transition-colors ${
+              darkMode
+                ? "bg-[#181818] border-[#383838] text-slate-200 placeholder-slate-500 focus:border-[#0078D7]"
+                : "bg-slate-50 border-[#ccc] text-slate-900 placeholder-slate-400 focus:border-[#0078D7]"
+            }`}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-2 p-0.5 rounded text-slate-400 hover:text-slate-200"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
         {/* Controls: Filter & Refresh */}
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex items-center gap-2 text-xs flex-wrap">
           <div className="flex items-center bg-transparent border border-inherit rounded overflow-hidden">
             {["all", "ethernet", "wi-fi", "vpn"].map((t) => (
               <button
@@ -134,6 +199,42 @@ export const AdapterList: React.FC<AdapterListProps> = ({
           </button>
         </div>
       </div>
+
+      {/* If no search results found */}
+      {filteredAdapters.length === 0 && (
+        <div
+          className={`p-6 rounded border text-center space-y-3 ${
+            darkMode ? "bg-[#232323] border-[#383838]" : "bg-white border-[#d8d8d8]"
+          }`}
+        >
+          <Search className="w-8 h-8 mx-auto text-slate-500" />
+          <div>
+            <h4 className="text-sm font-semibold text-slate-300 dark:text-slate-200">
+              No network adapters found matching "{searchQuery}"
+            </h4>
+            <p className="text-xs text-slate-400 mt-1">
+              Looking for Wi-Fi or Wi-Fi 2? You can clear your search or scan your device hardware.
+            </p>
+          </div>
+          <div className="flex items-center justify-center gap-2 pt-1">
+            <button
+              onClick={() => setSearchQuery("")}
+              className="px-3 py-1.5 rounded border border-slate-500/30 text-xs text-slate-300 hover:bg-white/5"
+            >
+              Clear Search
+            </button>
+            {onOpenScanner && (
+              <button
+                onClick={onOpenScanner}
+                className="px-3 py-1.5 bg-[#0078D7] hover:bg-[#106EBE] text-white rounded text-xs font-semibold flex items-center gap-1.5"
+              >
+                <Laptop className="w-3.5 h-3.5" />
+                <span>Search Device Hardware</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Grid of Adapter Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -174,6 +275,16 @@ export const AdapterList: React.FC<AdapterListProps> = ({
                         <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-slate-500/15 text-slate-400 border border-slate-500/20">
                           {adapter.interfaceName || adapter.id}
                         </span>
+                        {(adapter.name.toLowerCase().includes("wi-fi 2") || adapter.name.toLowerCase().includes("wifi-2")) && (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] bg-sky-500/15 text-sky-400 border border-sky-500/30 font-semibold">
+                            Wi-Fi 2 • 5GHz
+                          </span>
+                        )}
+                        {adapter.name.toLowerCase() === "wi-fi" && (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] bg-sky-500/15 text-sky-400 border border-sky-500/30 font-semibold">
+                            Wi-Fi 1 • 802.11ax
+                          </span>
+                        )}
                         {adapter.isPrimary && (
                           <span className="px-1.5 py-0.2 rounded text-[10px] bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 font-medium">
                             Default Gateway

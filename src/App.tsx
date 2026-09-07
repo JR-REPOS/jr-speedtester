@@ -25,6 +25,8 @@ import { AdapterComparison } from "./components/AdapterComparison";
 import { SpeedTestHistory } from "./components/SpeedTestHistory";
 import { PowerShellModal } from "./components/PowerShellModal";
 import { SettingsModal } from "./components/SettingsModal";
+import { DeviceScannerModal } from "./components/DeviceScannerModal";
+import { saveUserAdapters } from "./utils/deviceAdapterScanner";
 import {
   Gauge,
   Layers,
@@ -50,6 +52,10 @@ import {
   RotateCcw,
   ArrowRight,
   TrendingUp,
+  Laptop,
+  Search,
+  X,
+  Plus,
 } from "lucide-react";
 
 export default function App() {
@@ -61,6 +67,8 @@ export default function App() {
   const [adapters, setAdapters] = useState<NetworkAdapter[]>([]);
   const [selectedAdapterId, setSelectedAdapterId] = useState<string>("");
   const [isLoadingAdapters, setIsLoadingAdapters] = useState<boolean>(true);
+  const [speedTestAdapterSearch, setSpeedTestAdapterSearch] = useState<string>("");
+  const [speedTestFilterType, setSpeedTestFilterType] = useState<string>("all");
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState<
@@ -79,6 +87,7 @@ export default function App() {
   // Modals state
   const [isPowerShellOpen, setIsPowerShellOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isDeviceScannerOpen, setIsDeviceScannerOpen] = useState<boolean>(false);
 
   // Live Test State
   const [phase, setPhase] = useState<SpeedTestPhase>("idle");
@@ -146,6 +155,27 @@ export default function App() {
         },
       },
       {
+        id: "seed-hist-wifi2",
+        adapterId: "adapter-wifi-2",
+        adapterName: "Wi-Fi 2",
+        adapterType: "Wi-Fi",
+        adapterInterface: "Wi-Fi 2",
+        timestamp: Date.now() - 1000 * 60 * 45,
+        ping: 18.2,
+        jitter: 2.1,
+        downloadSpeed: 146.2,
+        uploadSpeed: 68.4,
+        downloadBytes: 25 * 1024 * 1024,
+        uploadBytes: 10 * 1024 * 1024,
+        grade: "A",
+        suitability: {
+          gaming: "Excellent",
+          streaming4k: "Excellent",
+          videoCalls: "Excellent",
+          largeUploads: "Excellent",
+        },
+      },
+      {
         id: "seed-hist-3",
         adapterId: "adapter-vpn-work",
         adapterName: "Corporate VPN",
@@ -205,6 +235,29 @@ export default function App() {
     } finally {
       setIsLoadingAdapters(false);
     }
+  };
+
+  const handleAddAdapters = (newAdapters: NetworkAdapter[]) => {
+    setAdapters((prev) => {
+      const merged = [...prev];
+      for (const ad of newAdapters) {
+        const idx = merged.findIndex(
+          (m) =>
+            m.id === ad.id ||
+            m.name.toLowerCase() === ad.name.toLowerCase() ||
+            (m.interfaceName &&
+              ad.interfaceName &&
+              m.interfaceName.toLowerCase() === ad.interfaceName.toLowerCase())
+        );
+        if (idx >= 0) {
+          merged[idx] = { ...merged[idx], ...ad };
+        } else {
+          merged.push(ad);
+        }
+      }
+      saveUserAdapters(merged);
+      return merged;
+    });
   };
 
   const activeAdapter: NetworkAdapter =
@@ -593,6 +646,22 @@ export default function App() {
           {/* Bottom Windows 10 Tools (PowerShell & Settings) */}
           <div className="hidden md:block p-2 border-t border-inherit space-y-1">
             <button
+              id="btn-open-device-scanner"
+              onClick={() => {
+                soundManager.playClick();
+                setIsDeviceScannerOpen(true);
+              }}
+              className={`w-full flex items-center gap-2 px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                darkMode
+                  ? "hover:bg-[#2b2b2b] text-slate-300"
+                  : "hover:bg-[#dfdfdf] text-slate-700"
+              }`}
+            >
+              <Laptop className="w-3.5 h-3.5 text-sky-400" />
+              <span>Device Scanner</span>
+            </button>
+
+            <button
               id="btn-open-powershell"
               onClick={() => {
                 soundManager.playClick();
@@ -635,85 +704,209 @@ export default function App() {
           {activeTab === "test" && (
             <div className="space-y-4 max-w-5xl mx-auto">
               {/* Feature: List all available network adapters & mechanism to select target if > 1 */}
-              {adapters.length > 1 && (
-                <div
-                  id="multi-adapter-selection-panel"
-                  className={`p-3 rounded border space-y-2.5 ${
-                    darkMode
-                      ? "bg-[#232323] border-[#383838]"
-                      : "bg-white border-[#d8d8d8]"
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Layers className="w-4 h-4 text-[#0078D7]" />
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-300 dark:text-slate-200">
-                        Select Network Adapter for Speed Test ({adapters.length} Detected):
-                      </span>
-                    </div>
-                    <span className="text-[11px] text-slate-400 font-sans">
-                      Click any adapter card below to test its throughput
-                    </span>
-                  </div>
+              {adapters.length > 1 && (() => {
+                const filteredSpeedTestAdapters = adapters.filter((ad) => {
+                  if (speedTestFilterType !== "all" && ad.type.toLowerCase() !== speedTestFilterType.toLowerCase()) {
+                    return false;
+                  }
+                  if (speedTestAdapterSearch.trim()) {
+                    const q = speedTestAdapterSearch.toLowerCase().trim();
+                    const matchName = ad.name.toLowerCase().includes(q);
+                    const matchDesc = ad.description.toLowerCase().includes(q);
+                    const matchIface = (ad.interfaceName || "").toLowerCase().includes(q);
+                    const matchIp = (ad.ipv4 || "").toLowerCase().includes(q);
+                    const matchType = ad.type.toLowerCase().includes(q);
+                    return matchName || matchDesc || matchIface || matchIp || matchType;
+                  }
+                  return true;
+                });
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                    {adapters.map((ad) => {
-                      const isSelected = ad.id === selectedAdapterId;
-                      return (
+                return (
+                  <div
+                    id="multi-adapter-selection-panel"
+                    className={`p-3 rounded border space-y-2.5 ${
+                      darkMode
+                        ? "bg-[#232323] border-[#383838]"
+                        : "bg-white border-[#d8d8d8]"
+                    }`}
+                  >
+                    {/* Top Row: Title, Search, Filters, Scanner Button */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-inherit/30 pb-2">
+                      <div className="flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-[#0078D7]" />
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-300 dark:text-slate-200">
+                          Select Network Adapter ({filteredSpeedTestAdapters.length}/{adapters.length} Shown):
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Search Input */}
+                        <div className="relative min-w-[180px] max-w-xs">
+                          <Search className="absolute left-2.5 top-2 w-3 h-3 text-slate-400 pointer-events-none" />
+                          <input
+                            type="text"
+                            id="input-speedtest-adapter-search"
+                            value={speedTestAdapterSearch}
+                            onChange={(e) => setSpeedTestAdapterSearch(e.target.value)}
+                            placeholder="Search (Wi-Fi, Wi-Fi 2, eth...)"
+                            className={`w-full pl-7 pr-7 py-1 text-xs rounded border transition-colors ${
+                              darkMode
+                                ? "bg-[#181818] border-[#383838] text-slate-200 placeholder-slate-500 focus:border-[#0078D7]"
+                                : "bg-slate-50 border-[#ccc] text-slate-900 placeholder-slate-400 focus:border-[#0078D7]"
+                            }`}
+                          />
+                          {speedTestAdapterSearch && (
+                            <button
+                              onClick={() => setSpeedTestAdapterSearch("")}
+                              className="absolute right-2 top-1.5 p-0.5 text-slate-400 hover:text-slate-200"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Type Filters */}
+                        <div className="flex items-center bg-transparent border border-inherit rounded overflow-hidden text-xs">
+                          {["all", "wi-fi", "ethernet", "vpn"].map((t) => (
+                            <button
+                              key={t}
+                              onClick={() => {
+                                soundManager.playClick();
+                                setSpeedTestFilterType(t);
+                              }}
+                              className={`px-2 py-0.5 text-[10px] capitalize transition-colors ${
+                                speedTestFilterType === t
+                                  ? "bg-[#0078D7] text-white font-medium"
+                                  : darkMode
+                                  ? "hover:bg-[#333] text-slate-400"
+                                  : "hover:bg-[#f0f0f0] text-slate-600"
+                              }`}
+                            >
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Device Hardware Scanner Button */}
                         <button
-                          key={ad.id}
-                          id={`select-adapter-${ad.id}`}
+                          id="btn-scan-adapters-speedtest"
                           onClick={() => {
                             soundManager.playClick();
-                            setSelectedAdapterId(ad.id);
+                            setIsDeviceScannerOpen(true);
                           }}
-                          className={`p-2.5 rounded border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
-                            isSelected
-                              ? darkMode
-                                ? "bg-[#2d2d2d] border-[#0078D7] ring-1 ring-[#0078D7] shadow-sm"
-                                : "bg-[#eaf3fc] border-[#0078D7] ring-1 ring-[#0078D7] shadow-sm"
-                              : darkMode
-                              ? "bg-[#1d1d1d] border-[#363636] hover:border-[#555] text-slate-300"
-                              : "bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700"
-                          }`}
+                          className="px-2.5 py-1 bg-[#0078D7] hover:bg-[#106EBE] text-white rounded text-[11px] font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
                         >
-                          <div>
-                            <div className="flex items-center justify-between w-full mb-1">
-                              <div className="flex items-center gap-1.5 font-semibold text-xs text-slate-900 dark:text-white">
-                                {getAdapterIcon(ad.type)}
-                                <span className="truncate">{ad.name}</span>
-                              </div>
-                              {isSelected ? (
-                                <div className="flex items-center gap-1">
-                                  <span className="text-[9px] font-bold text-[#0078D7] uppercase">Active</span>
-                                  <span className="w-2.5 h-2.5 rounded-full bg-[#0078D7] ring-2 ring-[#0078D7]/30" />
-                                </div>
-                              ) : (
-                                <span className="w-2.5 h-2.5 rounded-full border border-slate-400" />
-                              )}
-                            </div>
-                            <div className="text-[10px] text-slate-400 font-mono truncate">
-                              {ad.interfaceName} • {ad.linkSpeedMbps} Mbps
-                            </div>
-                            <div className="text-[10px] text-slate-400 line-clamp-1 mt-0.5 font-sans">
-                              {ad.description}
-                            </div>
-                          </div>
-
-                          <div className="mt-2 pt-1.5 border-t border-inherit/40 flex items-center justify-between text-[10px] text-slate-500 font-mono">
-                            <span>IP: {ad.ipv4 || "DHCP Waiting"}</span>
-                            {ad.lastTested && (
-                              <span className="text-emerald-500 font-bold">
-                                {ad.lastTested.downloadSpeed.toFixed(0)}↓ / {ad.lastTested.uploadSpeed.toFixed(0)}↑
-                              </span>
-                            )}
-                          </div>
+                          <Laptop className="w-3 h-3" />
+                          <span>Scan Hardware</span>
                         </button>
-                      );
-                    })}
+                      </div>
+                    </div>
+
+                    {/* Empty search state */}
+                    {filteredSpeedTestAdapters.length === 0 ? (
+                      <div className="py-6 text-center space-y-2">
+                        <Search className="w-6 h-6 mx-auto text-slate-500" />
+                        <p className="text-xs text-slate-400">
+                          No network adapters match "{speedTestAdapterSearch}"
+                        </p>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => {
+                              setSpeedTestAdapterSearch("");
+                              setSpeedTestFilterType("all");
+                            }}
+                            className="px-2.5 py-1 rounded border border-slate-500/30 text-xs text-slate-300 hover:bg-white/5"
+                          >
+                            Reset Search
+                          </button>
+                          <button
+                            onClick={() => setIsDeviceScannerOpen(true)}
+                            className="px-2.5 py-1 bg-[#0078D7] hover:bg-[#106EBE] text-white rounded text-xs font-medium"
+                          >
+                            Open Hardware Scanner
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                        {filteredSpeedTestAdapters.map((ad) => {
+                          const isSelected = ad.id === selectedAdapterId;
+                          const isWifi2 =
+                            ad.name.toLowerCase().includes("wi-fi 2") ||
+                            ad.name.toLowerCase().includes("wifi-2");
+                          const isWifi1 = ad.name.toLowerCase() === "wi-fi";
+
+                          return (
+                            <button
+                              key={ad.id}
+                              id={`select-adapter-${ad.id}`}
+                              onClick={() => {
+                                soundManager.playClick();
+                                setSelectedAdapterId(ad.id);
+                              }}
+                              className={`p-2.5 rounded border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
+                                isSelected
+                                  ? darkMode
+                                    ? "bg-[#2d2d2d] border-[#0078D7] ring-1 ring-[#0078D7] shadow-sm"
+                                    : "bg-[#eaf3fc] border-[#0078D7] ring-1 ring-[#0078D7] shadow-sm"
+                                  : darkMode
+                                  ? "bg-[#1d1d1d] border-[#363636] hover:border-[#555] text-slate-300"
+                                  : "bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700"
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-center justify-between w-full mb-1">
+                                  <div className="flex items-center gap-1.5 font-semibold text-xs text-slate-900 dark:text-white">
+                                    {getAdapterIcon(ad.type)}
+                                    <span className="truncate">{ad.name}</span>
+                                  </div>
+                                  {isSelected ? (
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-[9px] font-bold text-[#0078D7] uppercase">Active</span>
+                                      <span className="w-2.5 h-2.5 rounded-full bg-[#0078D7] ring-2 ring-[#0078D7]/30" />
+                                    </div>
+                                  ) : (
+                                    <span className="w-2.5 h-2.5 rounded-full border border-slate-400" />
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-1.5 my-1 flex-wrap">
+                                  {isWifi2 && (
+                                    <span className="text-[9px] font-semibold text-sky-400 bg-sky-400/10 px-1 py-0.2 rounded border border-sky-400/20">
+                                      Wi-Fi 2 • 5GHz
+                                    </span>
+                                  )}
+                                  {isWifi1 && (
+                                    <span className="text-[9px] font-semibold text-sky-400 bg-sky-400/10 px-1 py-0.2 rounded border border-sky-400/20">
+                                      Wi-Fi 1 • 802.11ax
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="text-[10px] text-slate-400 font-mono truncate">
+                                  {ad.interfaceName} • {ad.linkSpeedMbps} Mbps
+                                </div>
+                                <div className="text-[10px] text-slate-400 line-clamp-1 mt-0.5 font-sans">
+                                  {ad.description}
+                                </div>
+                              </div>
+
+                              <div className="mt-2 pt-1.5 border-t border-inherit/40 flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                                <span>IP: {ad.ipv4 || "DHCP Waiting"}</span>
+                                {ad.lastTested && (
+                                  <span className="text-emerald-500 font-bold">
+                                    {ad.lastTested.downloadSpeed.toFixed(0)}↓ / {ad.lastTested.uploadSpeed.toFixed(0)}↑
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Active Adapter Summary Strip */}
               <div
@@ -1161,6 +1354,7 @@ export default function App() {
                   startSpeedTest(ad);
                 }}
                 onRefreshAdapters={loadAdapters}
+                onOpenScanner={() => setIsDeviceScannerOpen(true)}
                 isTesting={phase !== "idle" && phase !== "complete" && phase !== "error"}
                 darkMode={darkMode}
               />
@@ -1293,6 +1487,18 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         onUpdateSettings={setSettings}
+        darkMode={darkMode}
+      />
+
+      <DeviceScannerModal
+        isOpen={isDeviceScannerOpen}
+        onClose={() => setIsDeviceScannerOpen(false)}
+        existingAdapters={adapters}
+        onAddAdapters={handleAddAdapters}
+        onSelectAdapter={(ad) => {
+          setSelectedAdapterId(ad.id);
+          setActiveTab("test");
+        }}
         darkMode={darkMode}
       />
     </div>

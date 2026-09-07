@@ -43,26 +43,27 @@ export async function detectWebRTCInterfaces(): Promise<string[]> {
   return Array.from(discoveredIps);
 }
 
-// Fetch network adapters from server with client enrichment
+// Fetch network adapters from server with client enrichment and user-saved adapter merging
 export async function fetchNetworkAdapters(): Promise<NetworkAdapter[]> {
+  let serverAdapters: NetworkAdapter[] = [];
   try {
     const res = await fetch("/api/adapters");
     if (!res.ok) {
       throw new Error(`Failed to load adapters: ${res.status}`);
     }
     const data = await res.json();
-    return data.adapters || [];
+    serverAdapters = data.adapters || [];
   } catch (err) {
     console.warn("Using fallback adapter list", err);
-    return [
+    serverAdapters = [
       {
         id: "adapter-eth-0",
         name: "Ethernet",
         interfaceName: "Ethernet 1",
-        description: "Realtek PCIe GbE Family Controller",
+        description: "Intel(R) Ethernet Controller I225-V (2.5GbE)",
         type: "Ethernet",
         status: "Connected",
-        linkSpeedMbps: 1000,
+        linkSpeedMbps: 2500,
         ipv4: "192.168.1.102",
         mac: "00:1A:2B:3C:4D:5E",
         netmask: "255.255.255.0",
@@ -78,7 +79,7 @@ export async function fetchNetworkAdapters(): Promise<NetworkAdapter[]> {
         id: "adapter-wifi-0",
         name: "Wi-Fi",
         interfaceName: "Wi-Fi",
-        description: "Intel(R) Wi-Fi 6 AX200 160MHz",
+        description: "Intel(R) Wi-Fi 6 AX200 160MHz (802.11ax 2.4/5GHz)",
         type: "Wi-Fi",
         status: "Connected",
         linkSpeedMbps: 866,
@@ -89,13 +90,85 @@ export async function fetchNetworkAdapters(): Promise<NetworkAdapter[]> {
         dns: ["1.1.1.1"],
         dhcpEnabled: true,
         isPrimary: false,
-        signalStrength: 85,
+        signalStrength: 88,
         mtu: 1500,
         bytesReceived: 98210394,
         bytesSent: 23901928,
       },
+      {
+        id: "adapter-wifi-2",
+        name: "Wi-Fi 2",
+        interfaceName: "Wi-Fi 2",
+        description: "Realtek 8812BU Wireless LAN 802.11ac USB NIC (Dual-Band 5GHz)",
+        type: "Wi-Fi",
+        status: "Connected",
+        linkSpeedMbps: 866,
+        ipv4: "192.168.1.146",
+        mac: "00:E0:4C:81:92:B4",
+        netmask: "255.255.255.0",
+        gateway: "192.168.1.1",
+        dns: ["1.1.1.1"],
+        dhcpEnabled: true,
+        isPrimary: false,
+        signalStrength: 94,
+        mtu: 1500,
+        bytesReceived: 142091842,
+        bytesSent: 38201948,
+      },
     ];
   }
+
+  // Load any user-saved device adapters from localStorage and merge them
+  try {
+    const raw = localStorage.getItem("win10_user_device_adapters");
+    if (raw) {
+      const userSaved: NetworkAdapter[] = JSON.parse(raw);
+      if (Array.isArray(userSaved)) {
+        for (const saved of userSaved) {
+          const exists = serverAdapters.some(
+            (a) =>
+              a.id === saved.id ||
+              a.name.toLowerCase() === saved.name.toLowerCase() ||
+              (a.interfaceName && a.interfaceName.toLowerCase() === saved.interfaceName.toLowerCase())
+          );
+          if (!exists) {
+            serverAdapters.push(saved);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to merge user-saved adapters", e);
+  }
+
+  // Unconditionally ensure Wi-Fi 2 is present if not already added
+  const hasWifi2 = serverAdapters.some(
+    (a) => a.name.toLowerCase() === "wi-fi 2" || a.name.toLowerCase() === "wifi-2" || a.name.toLowerCase() === "wifi 2"
+  );
+  if (!hasWifi2) {
+    serverAdapters.push({
+      id: "adapter-wifi-2",
+      name: "Wi-Fi 2",
+      interfaceName: "Wi-Fi 2",
+      description: "Realtek 8812BU Wireless LAN 802.11ac USB NIC (Dual-Band 5GHz)",
+      type: "Wi-Fi",
+      status: "Connected",
+      linkSpeedMbps: 866,
+      ipv4: "192.168.1.146",
+      mac: "00:E0:4C:81:92:B4",
+      netmask: "255.255.255.0",
+      gateway: "192.168.1.1",
+      dns: ["1.1.1.1"],
+      dhcpEnabled: true,
+      isPrimary: false,
+      signalStrength: 94,
+      mtu: 1500,
+      bytesReceived: 142091842,
+      bytesSent: 38201948,
+    });
+  }
+
+  return serverAdapters;
 }
 
 // Ping & Jitter measurement
