@@ -6,14 +6,19 @@ interface PowerShellModalProps {
   isOpen: boolean;
   onClose: () => void;
   darkMode: boolean;
+  customScript?: string;
+  onClearCustomScript?: () => void;
 }
 
 export const PowerShellModal: React.FC<PowerShellModalProps> = ({
   isOpen,
   onClose,
   darkMode,
+  customScript,
+  onClearCustomScript,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [copiedCustom, setCopiedCustom] = useState(false);
 
   if (!isOpen) return null;
 
@@ -24,6 +29,14 @@ export const PowerShellModal: React.FC<PowerShellModalProps> = ({
     navigator.clipboard.writeText(oneLiner);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const copyCustomScript = () => {
+    if (!customScript) return;
+    soundManager.playClick();
+    navigator.clipboard.writeText(customScript);
+    setCopiedCustom(true);
+    setTimeout(() => setCopiedCustom(false), 2000);
   };
 
   return (
@@ -53,7 +66,49 @@ export const PowerShellModal: React.FC<PowerShellModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="p-4 space-y-4 text-xs">
+        <div className="p-4 space-y-4 text-xs max-h-[75vh] overflow-y-auto">
+          {customScript && (
+            <div className="space-y-1.5 p-3 rounded border border-[#0078D7]/40 bg-[#0078D7]/10">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Terminal className="w-3.5 h-3.5 text-sky-400" />
+                  <span className="font-semibold text-xs text-sky-300">
+                    Gemini AI Generated PowerShell Script:
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={copyCustomScript}
+                    className="flex items-center gap-1 text-[11px] text-sky-300 hover:underline"
+                  >
+                    {copiedCustom ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-400">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Script</span>
+                      </>
+                    )}
+                  </button>
+                  {onClearCustomScript && (
+                    <button
+                      onClick={onClearCustomScript}
+                      className="text-[10px] text-slate-400 hover:text-slate-200"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="p-2.5 rounded bg-black font-mono text-[11px] text-emerald-400 border border-slate-800 overflow-x-auto whitespace-pre-wrap max-h-48 select-all">
+                {customScript}
+              </div>
+            </div>
+          )}
+
           <p className="text-slate-400">
             For hardware-level diagnostics on Windows 10, you can run native Windows PowerShell commands using <code className="text-[#0078D7] font-mono">Get-NetAdapter</code> to benchmark and bind individual physical and virtual network adapters.
           </p>

@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import os from "os";
 import { createServer as createViteServer } from "vite";
+import { GoogleGenAI } from "@google/genai";
 
 interface NetworkAdapterInfo {
   id: string;
@@ -272,6 +273,22 @@ function getSystemAdapters(): NetworkAdapterInfo[] {
 const CHUNK_SIZE = 64 * 1024; // 64KB chunks
 const sampleBuffer = Buffer.alloc(CHUNK_SIZE, 0xaa);
 
+// Lazy Gemini API client initialization
+let geminiClient: GoogleGenAI | null = null;
+function getGeminiClient(): GoogleGenAI | null {
+  if (!geminiClient && process.env.GEMINI_API_KEY) {
+    geminiClient = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
+  }
+  return geminiClient;
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -283,6 +300,89 @@ async function startServer() {
   // API Routes
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: Date.now() });
+  });
+
+  // Gemini Multi-turn Chat Endpoint
+  app.post("/api/chat", async (req, res) => {
+    try {
+      const { messages, model = "gemini-3.5-flash", systemInstruction, stream = true } = req.body;
+
+      if (!messages || !Array.isArray(messages) || messages.length === 0) {
+        return res.status(400).json({ error: "Messages array is required." });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({
+          error: "GEMINI_API_KEY is not configured in the environment. Please check the Secrets panel in AI Studio.",
+          isConfigError: true,
+        });
+      }
+
+      const ai = getGeminiClient();
+      if (!ai) {
+        return res.status(500).json({ error: "Failed to initialize Gemini AI client." });
+      }
+
+      // Model mapping based on user specifications:
+      // - gemini-3.1-pro-preview for particularly complex tasks
+      // - gemini-3.5-flash for general tasks (and gemini-3.8-flash)
+      // - gemini-3.1-flash-lite for tasks that should happen fast
+      const validModels = [
+        "gemini-3.1-pro-preview",
+        "gemini-3.5-flash",
+        "gemini-3.8-flash",
+        "gemini-3.1-flash-lite",
+      ];
+      const targetModel = validModels.includes(model) ? model : "gemini-3.5-flash";
+
+      // Transform conversation history into contents array for @google/genai
+      const contents = messages.map((m: { role: string; content: string }) => ({
+        role: m.role === "assistant" || m.role === "model" ? "model" : "user",
+        parts: [{ text: String(m.content || "") }],
+      }));
+
+      if (stream) {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("Connection", "keep-alive");
+        if (typeof res.flushHeaders === "function") {
+          res.flushHeaders();
+        }
+
+        const responseStream = await ai.models.generateContentStream({
+          model: targetModel,
+          contents,
+          config: systemInstruction ? { systemInstruction } : undefined,
+        });
+
+        for await (const chunk of responseStream) {
+          const text = chunk.text;
+          if (text) {
+            res.write(`data: ${JSON.stringify({ text })}\n\n`);
+          }
+        }
+        res.write("data: [DONE]\n\n");
+        res.end();
+      } else {
+        const response = await ai.models.generateContent({
+          model: targetModel,
+          contents,
+          config: systemInstruction ? { systemInstruction } : undefined,
+        });
+
+        res.json({ text: response.text || "", model: targetModel });
+      }
+    } catch (err: any) {
+      console.error("Gemini API error in /api/chat:", err);
+      const msg = err?.message || "Failed to communicate with Gemini API";
+      if (res.headersSent) {
+        res.write(`data: ${JSON.stringify({ error: msg })}\n\n`);
+        res.end();
+      } else {
+        res.status(500).json({ error: msg });
+      }
+    }
   });
 
   // Enumerate network adapters

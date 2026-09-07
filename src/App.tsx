@@ -26,6 +26,7 @@ import { SpeedTestHistory } from "./components/SpeedTestHistory";
 import { PowerShellModal } from "./components/PowerShellModal";
 import { SettingsModal } from "./components/SettingsModal";
 import { DeviceScannerModal } from "./components/DeviceScannerModal";
+import { GeminiChatbot } from "./components/GeminiChatbot";
 import { saveUserAdapters } from "./utils/deviceAdapterScanner";
 import {
   Gauge,
@@ -56,6 +57,8 @@ import {
   Search,
   X,
   Plus,
+  Sparkles,
+  Bot,
 } from "lucide-react";
 
 export default function App() {
@@ -72,8 +75,12 @@ export default function App() {
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState<
-    "test" | "adapters" | "history" | "comparison" | "monitor"
+    "test" | "adapters" | "chat" | "history" | "comparison" | "monitor"
   >("test");
+
+  // Prefilled chat prompt from external actions (e.g. speed test complete, adapter list)
+  const [prefilledChatPrompt, setPrefilledChatPrompt] = useState<string>("");
+  const [customPowerShellScript, setCustomPowerShellScript] = useState<string>("");
 
   // Speed test parameters & settings
   const [settings, setSettings] = useState<TestSettings>({
@@ -571,6 +578,30 @@ export default function App() {
                 }`}
               >
                 {adapters.length}
+              </span>
+            </button>
+
+            {/* Gemini AI Assistant Tab */}
+            <button
+              id="nav-tab-gemini-chat"
+              onClick={() => {
+                soundManager.playClick();
+                setActiveTab("chat");
+              }}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded text-xs font-medium transition-colors text-left ${
+                activeTab === "chat"
+                  ? "bg-[#0078D7] text-white shadow-xs"
+                  : darkMode
+                  ? "hover:bg-[#2b2b2b] text-slate-300"
+                  : "hover:bg-[#dfdfdf] text-slate-700"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Sparkles className="w-4 h-4 shrink-0 text-amber-400" />
+                <span>AI Assistant</span>
+              </div>
+              <span className="text-[9px] px-1.5 py-0.2 rounded font-mono bg-sky-500/20 text-sky-300 border border-sky-400/30 font-semibold">
+                Gemini
               </span>
             </button>
 
@@ -1337,12 +1368,60 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Gemini AI Optimization Advice Action */}
+                  <div className="pt-2 border-t border-inherit/40 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Want tailored advice on how to improve this connection?</span>
+                    </div>
+                    <button
+                      id="btn-analyze-with-gemini"
+                      onClick={() => {
+                        soundManager.playClick();
+                        setPrefilledChatPrompt(
+                          `I just ran a speed test on my ${activeResult.adapterName} (${activeResult.adapterType || "Network Adapter"}):
+- Download Speed: ${activeResult.downloadSpeed.toFixed(1)} Mbps
+- Upload Speed: ${activeResult.uploadSpeed.toFixed(1)} Mbps
+- Latency (Ping): ${activeResult.ping.toFixed(1)} ms
+- Jitter: ${activeResult.jitter.toFixed(1)} ms
+- Grade: ${activeResult.grade}
+
+Please analyze this performance, explain if my ping/jitter is good for gaming, and give me 3 specific recommendations to optimize this adapter.`
+                        );
+                        setActiveTab("chat");
+                      }}
+                      className="px-3 py-1.5 rounded bg-gradient-to-r from-[#0078D7] to-indigo-600 hover:opacity-90 text-white text-xs font-medium flex items-center gap-1.5 shadow-xs transition-opacity cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Analyze with Gemini AI</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
           )}
 
-          {/* TAB 2: NETWORK ADAPTERS VIEW */}
+          {/* TAB 2: GEMINI AI CHATBOT VIEW */}
+          {activeTab === "chat" && (
+            <div className="max-w-5xl mx-auto">
+              <GeminiChatbot
+                activeAdapter={activeAdapter}
+                allAdapters={adapters}
+                latestResult={activeResult || testHistory[0]}
+                onOpenPowerShellWithCommand={(code) => {
+                  setCustomPowerShellScript(code);
+                  setIsPowerShellOpen(true);
+                }}
+                darkMode={darkMode}
+                prefilledPrompt={prefilledChatPrompt}
+                onClearPrefilledPrompt={() => setPrefilledChatPrompt("")}
+              />
+            </div>
+          )}
+
+          {/* TAB 3: NETWORK ADAPTERS VIEW */}
           {activeTab === "adapters" && (
             <div className="max-w-5xl mx-auto">
               <AdapterList
@@ -1355,6 +1434,12 @@ export default function App() {
                 }}
                 onRefreshAdapters={loadAdapters}
                 onOpenScanner={() => setIsDeviceScannerOpen(true)}
+                onAskAI={(ad) => {
+                  setPrefilledChatPrompt(
+                    `Analyze my ${ad.name} network adapter (${ad.description}). It has a link speed of ${ad.linkSpeedMbps} Mbps, IPv4: ${ad.ipv4 || "None"}, MAC: ${ad.mac}. How can I optimize its Windows 10 driver and adapter properties for peak performance?`
+                  );
+                  setActiveTab("chat");
+                }}
                 isTesting={phase !== "idle" && phase !== "complete" && phase !== "error"}
                 darkMode={darkMode}
               />
@@ -1480,6 +1565,8 @@ export default function App() {
         isOpen={isPowerShellOpen}
         onClose={() => setIsPowerShellOpen(false)}
         darkMode={darkMode}
+        customScript={customPowerShellScript}
+        onClearCustomScript={() => setCustomPowerShellScript("")}
       />
 
       <SettingsModal

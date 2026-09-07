@@ -86,3 +86,27 @@ export interface TestSettings {
   pingSamplesCount: number;
   enableSound: boolean;
 }
+
+export type ChatRole = "user" | "model" | "assistant";
+
+export interface ChatMessage {
+  id: string;
+  role: ChatRole;
+  content: string;
+  timestamp: number;
+  model?: string;
+  roleName?: string;
+  isStreaming?: boolean;
+}
+
+export interface ChatbotRole {
+  id: string;
+  name: string;
+  model: string;
+  badge: string;
+  description: string;
+  systemInstruction: string;
+  speedTag: string;
+  iconName: "Zap" | "Bot" | "Cpu";
+}
+

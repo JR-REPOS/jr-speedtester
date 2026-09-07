@@ -28,6 +28,7 @@ interface AdapterListProps {
   onStartTest: (adapter: NetworkAdapter) => void;
   onRefreshAdapters: () => void;
   onOpenScanner?: () => void;
+  onAskAI?: (adapter: NetworkAdapter) => void;
   isTesting: boolean;
   darkMode: boolean;
 }
@@ -39,6 +40,7 @@ export const AdapterList: React.FC<AdapterListProps> = ({
   onStartTest,
   onRefreshAdapters,
   onOpenScanner,
+  onAskAI,
   isTesting,
   darkMode,
 }) => {
@@ -371,21 +373,40 @@ export const AdapterList: React.FC<AdapterListProps> = ({
 
               {/* Bottom Actions */}
               <div className="mt-3 pt-2.5 border-t border-inherit flex items-center justify-between gap-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    soundManager.playClick();
-                    setSelectedForDetails(adapter);
-                  }}
-                  className={`text-xs flex items-center gap-1 px-2 py-1 rounded transition-colors ${
-                    darkMode
-                      ? "hover:bg-[#333] text-slate-300"
-                      : "hover:bg-[#e8e8e8] text-slate-700"
-                  }`}
-                >
-                  <SlidersHorizontal className="w-3 h-3 text-[#0078D7]" />
-                  <span>Adapter Properties</span>
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      soundManager.playClick();
+                      setSelectedForDetails(adapter);
+                    }}
+                    className={`text-xs flex items-center gap-1 px-2 py-1 rounded transition-colors ${
+                      darkMode
+                        ? "hover:bg-[#333] text-slate-300"
+                        : "hover:bg-[#e8e8e8] text-slate-700"
+                    }`}
+                  >
+                    <SlidersHorizontal className="w-3 h-3 text-[#0078D7]" />
+                    <span>Properties</span>
+                  </button>
+
+                  {onAskAI && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        soundManager.playClick();
+                        onAskAI(adapter);
+                      }}
+                      className={`text-xs flex items-center gap-1 px-2 py-1 rounded transition-colors text-amber-400 ${
+                        darkMode ? "hover:bg-amber-400/10" : "hover:bg-amber-50"
+                      }`}
+                      title="Ask Gemini AI about this adapter"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>Ask AI</span>
+                    </button>
+                  )}
+                </div>
 
                 <div className="flex items-center gap-1.5">
                   {!isActive && (
